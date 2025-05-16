@@ -17,8 +17,8 @@
 
 typedef struct
 {
-    uint16_t x_pos;
-    uint16_t y_pos;
+    uint16_t water_level; // Simula o nível da água no eixo X
+    uint16_t rain_volume;  // Simula o volume de chuva no eixo Y
 } joystick_data_t;
 
 QueueHandle_t xQueueJoystickData;
@@ -65,10 +65,10 @@ void vJoystickTask(void *params)
     while (true)
     {
         adc_select_input(ADC_JOYSTICK_Y_CHANNEL); // GPIO 26 = ADC0
-        joystick_data.y_pos = adc_read();
+        joystick_data.rain_volume = adc_read();
 
         adc_select_input(ADC_JOYSTICK_X_CHANNEL); // GPIO 27 = ADC1
-        joystick_data.x_pos = adc_read();
+        joystick_data.water_level = adc_read();
 
         xQueueSend(xQueueJoystickData, &joystick_data, portMAX_DELAY); // Envia o valor do joystick para a fila
         vTaskDelay(pdMS_TO_TICKS(200));                        // 10 Hz de leitura
