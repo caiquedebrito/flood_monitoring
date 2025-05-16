@@ -30,6 +30,8 @@ typedef struct
 
 QueueHandle_t xQueueJoystickData;
 
+bool alert_mode = false; // Variável global para o modo de alerta
+
 void gpio_irq_handler(uint gpio, uint32_t events);
 void vJoystickTask(void *params);
 void vDisplayTask(void *params);
@@ -79,6 +81,15 @@ void vJoystickTask(void *params)
         adc_select_input(ADC_JOYSTICK_X_CHANNEL); // GPIO 27 = ADC1
         joystick_data.water_level = adc_read();
 
+        printf("Water Level: %d, Rain Volume: %d\n", joystick_data.water_level, joystick_data.rain_volume);
+
+        if ((joystick_data.water_level >= 4095 * 0.7) || (joystick_data.rain_volume >= 4095 * 0.8)) {
+            printf("Alert mode!\n");
+            alert_mode = true; // Ativa o modo de alerta
+        } else {
+            alert_mode = false; // Desativa o modo de alerta
+        }
+
         xQueueSend(xQueueJoystickData, &joystick_data, portMAX_DELAY); // Envia o valor do joystick para a fila
         vTaskDelay(pdMS_TO_TICKS(200));                        // 10 Hz de leitura
     }
@@ -107,8 +118,18 @@ void vDisplayTask(void *params)
             char rain_volume_str[12];
             snprintf(water_level_str, sizeof(water_level_str), "Water: %d", joystick_data.water_level);
             snprintf(rain_volume_str, sizeof(rain_volume_str), "Rain: %d", joystick_data.rain_volume);
-            ssd1306_draw_string(&ssd, water_level_str, 2, 28);
-            ssd1306_draw_string(&ssd, rain_volume_str, 2, 36);
+            ssd1306_draw_string(&ssd, water_level_str, 2, 2);
+            ssd1306_draw_string(&ssd, rain_volume_str, 2, 12);
+
+            if (alert_mode)
+            {
+                ssd1306_draw_string(&ssd, "ALERT!", 2, 22);
+            }
+            else
+            {
+                ssd1306_draw_string(&ssd, "Safe  ", 2, 22);
+            }
+
             ssd1306_send_data(&ssd);
         }
         vTaskDelay(pdMS_TO_TICKS(100)); // Atualiza a tela a cada 100ms
