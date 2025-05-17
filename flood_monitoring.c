@@ -22,6 +22,8 @@
 #define I2C_SCL 15
 #define I2C_ADDRESS 0x3C
 
+#define RED_LED_PIN 13
+
 typedef struct
 {
     uint16_t water_level; // Simula o nível da água no eixo X
@@ -35,6 +37,7 @@ bool alert_mode = false; // Variável global para o modo de alerta
 void gpio_irq_handler(uint gpio, uint32_t events);
 void vJoystickTask(void *params);
 void vDisplayTask(void *params);
+void vRedLedTask(void *params);
 
 int main()
 {
@@ -42,6 +45,10 @@ int main()
     gpio_set_dir(botaoB, GPIO_IN);
     gpio_pull_up(botaoB);
     gpio_set_irq_enabled_with_callback(botaoB, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler);
+
+    gpio_init(RED_LED_PIN);
+    gpio_set_dir(RED_LED_PIN, GPIO_OUT);
+    gpio_put(RED_LED_PIN, false); // Desliga o LED vermelho
 
     adc_init();
     adc_gpio_init(ADC_JOYSTICK_Y);
@@ -55,6 +62,7 @@ int main()
     // Criação das tasks
     xTaskCreate(vJoystickTask, "Joystick Task", 256, NULL, 1, NULL);
     xTaskCreate(vDisplayTask, "Display Task", 256, NULL, 1, NULL);
+    xTaskCreate(vRedLedTask, "Red LED Task", 256, NULL, 1, NULL);
 
     // Inicia o agendador
     vTaskStartScheduler();
@@ -133,5 +141,21 @@ void vDisplayTask(void *params)
             ssd1306_send_data(&ssd);
         }
         vTaskDelay(pdMS_TO_TICKS(100)); // Atualiza a tela a cada 100ms
+    }
+}
+
+void vRedLedTask(void *params)
+{
+    while (true)
+    {
+        if (alert_mode)
+        {
+            gpio_put(RED_LED_PIN, true); // Liga o LED vermelho
+        }
+        else
+        {
+            gpio_put(RED_LED_PIN, false); // Desliga o LED vermelho
+        }
+        vTaskDelay(pdMS_TO_TICKS(100)); // Atualiza a cada 100ms
     }
 }
