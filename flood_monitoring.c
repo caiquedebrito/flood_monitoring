@@ -8,6 +8,8 @@
 #include "lib/ssd1306.h"
 #include "hardware/pwm.h"
 #include "hardware/clocks.h"
+#include "hardware/pio.h"
+#include "ws2812.pio.h"
 
 // Modo BOOTSEL com botão B
 #include "pico/bootrom.h"
@@ -30,6 +32,10 @@
 #define BUZZER_B_PIN 10
 #define BUZZER_FREQUENCY 200
 
+#define WS2812_PIN 7
+
+#define LED_COUNT 25
+
 const float DIVIDER_PWM = 16.0;          
 const uint16_t PERIOD = 4096;
 
@@ -43,13 +49,39 @@ QueueHandle_t xQueueJoystickData;
 
 bool alert_mode = false; // Variável global para o modo de alerta
 
+struct pixel_t {
+  uint8_t R, G, B; // Três valores de 8-bits compõem um pixel.
+};
+typedef struct pixel_t pixel_t;
+typedef pixel_t npLED_t; // Mudança de nome de "struct pixel_t" para "npLED_t" por clareza.
+
+// Declaração do buffer de pixels que formam a matriz.
+npLED_t leds[LED_COUNT];
+
+// Variáveis para uso da máquina PIO.
+PIO np_pio;
+uint sm;
+
+const bool matrix_alert_draw[] = {
+    10, 10, 10, 10, 10,
+    10, 10, 0, 10, 10,
+    10, 0, 10, 0, 10,
+    10, 10, 0, 10, 10,
+    10, 10, 10, 10, 10,
+};
+
 void gpio_irq_handler(uint gpio, uint32_t events);
 void vJoystickTask(void *params);
 void vDisplayTask(void *params);
 void vRedLedTask(void *params);
 void vBuzzerTask(void *params);
+void vMatrixTask(void *params);
 void pwm_init_buzzer(uint pin);
 void play_note(uint pin, int frequency, int duration);
+void npInit(uint pin);
+void npSetLED(const uint index, const uint8_t r, const uint8_t g, const uint8_t b);
+void npClear();
+void npWrite();
 
 int main()
 {
@@ -79,6 +111,7 @@ int main()
     xTaskCreate(vDisplayTask, "Display Task", 256, NULL, 1, NULL);
     xTaskCreate(vRedLedTask, "Red LED Task", 256, NULL, 1, NULL);
     xTaskCreate(vBuzzerTask, "Buzzer Task", 256, NULL, 1, NULL);
+    xTaskCreate(vMatrixTask, "Matrix Task", 256, NULL, 1, NULL);
 
     // Inicia o agendador
     vTaskStartScheduler();
@@ -238,6 +271,29 @@ void vBuzzerTask(void *params)
     }
 }
 
+// Tarefa para controlar a matriz de LEDs
+void vMatrixTask(void *params)
+{
+    npInit(WS2812_PIN); // Inicializa a matriz de LEDs no pino 16
+
+    while (true)
+    {
+        if (alert_mode) {
+            for (uint i = 0; i < LED_COUNT; ++i) {
+                if (matrix_alert_draw[i]) {
+                    npSetLED(i, 255, 0, 0); // Define a cor vermelha para os LEDs
+                } else {
+                    npSetLED(i, 0, 0, 0); // Limpa o LED
+                }
+            }
+        } else {
+            npClear(); // Limpa a matriz de LEDs
+        }
+        npWrite(); // Atualiza a matriz de LEDs
+        vTaskDelay(pdMS_TO_TICKS(100)); // Atualiza a cada 100ms
+    }
+}
+
 /**
  * @brief Inicializa o PWM para o buzzer.
  *
@@ -280,4 +336,69 @@ void play_note(uint pin, int frequency, int duration) {
     sleep_ms(duration);
 
     pwm_set_enabled(slice_num, false);
+}
+
+/**
+ * Inicializa a máquina PIO para controle da matriz de LEDs.
+ */
+void npInit(uint pin) {
+
+  // Cria programa PIO.
+  uint offset = pio_add_program(pio0, &ws2818b_program);
+  np_pio = pio0;
+
+  // Toma posse de uma máquina PIO.
+  sm = pio_claim_unused_sm(np_pio, false);
+  if (sm < 0) {
+    np_pio = pio1;
+    sm = pio_claim_unused_sm(np_pio, true); // Se nenhuma máquina estiver livre, panic!
+  }
+
+  // Inicia programa na máquina PIO obtida.
+  ws2818b_program_init(np_pio, sm, offset, pin, 800000.f);
+
+  // Limpa buffer de pixels.
+  for (uint i = 0; i < LED_COUNT; ++i) {
+    leds[i].R = 0;
+    leds[i].G = 0;
+    leds[i].B = 0;
+  }
+}
+
+/**
+ * Atribui uma cor RGB a um LED.
+ */
+void npSetLED(const uint index, const uint8_t r, const uint8_t g, const uint8_t b) {
+  leds[index].R = r;
+  leds[index].G = g;
+  leds[index].B = b;
+}
+
+/**
+ * Limpa o buffer de pixels.
+ */
+void npClear() {
+  for (uint i = 0; i < LED_COUNT; ++i)
+    npSetLED(i, 0, 0, 0);
+}
+
+/**
+ * Escreve os dados do buffer nos LEDs.
+ */
+void npWrite() {
+  // Escreve cada dado de 8-bits dos pixels em sequência no buffer da máquina PIO.
+  for (uint i = 0; i < LED_COUNT; ++i) {
+    pio_sm_put_blocking(np_pio, sm, leds[i].G);
+    pio_sm_put_blocking(np_pio, sm, leds[i].R);
+    pio_sm_put_blocking(np_pio, sm, leds[i].B);
+  }
+  sleep_us(100); // Espera 100us, sinal de RESET do datasheet.
+}
+
+// Função para converter valores (0.0 a 1.0) em uma cor 32-bit (RGB)
+uint32_t matrix_rgb(uint8_t intensity) {
+    // Converte o valor de intensidade para 0-255
+    unsigned char I = intensity * 255;
+    // Retorna a cor no formato 0x00RRGGBB (usaremos apenas R, por exemplo)
+    return (I << 16) | (I << 8) | I;
 }
