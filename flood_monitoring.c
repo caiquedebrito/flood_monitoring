@@ -90,6 +90,17 @@ void gpio_irq_handler(uint gpio, uint32_t events)
     reset_usb_boot(0, 0);
 }
 
+/**
+ * @brief Tarefa responsável por processar os comandos do joystick.
+ *
+ * Esta função implementa a lógica de controle associada às entradas do joystick,
+ * sendo normalmente executada como uma tarefa em sistemas embarcados. 
+ * Ela processa os dados provenientes do joystick e realiza as ações necessárias 
+ * para atualizar o estado do sistema de monitoramento.
+ *
+ * @param params Ponteiro para os parâmetros da tarefa, que podem incluir configurações 
+ *               iniciais ou dados relevantes ao processamento dos comandos do joystick.
+ */
 void vJoystickTask(void *params)
 {
     adc_init();
@@ -119,6 +130,30 @@ void vJoystickTask(void *params)
     }
 }
 
+/**
+ * @brief Função da tarefa responsável por atualizar o display.
+ *
+ * Esta função foi projetada para ser executada como uma tarefa dedicada ao gerenciamento
+ * e atualização do display no sistema de monitoramento de enchentes. Ela processa os parâmetros
+ * de entrada fornecidos à tarefa, os quais podem incluir configurações ou recursos compartilhados
+ * necessários para o funcionamento do display.
+ *
+ * @param params Ponteiro para os parâmetros específicos da tarefa utilizados durante a execução.
+ *
+ * @note Esta função é destinada a ser utilizada como uma tarefa em um sistema operacional de tempo real (RTOS).
+ */
+/**
+ * @brief Task function to handle display updates.
+ *
+ * This function is designed to run as a dedicated task for managing and updating the display
+ * in the flood monitoring system. It processes the input parameters provided to the task,
+ * which may include configuration settings or shared resources needed for display operation.
+ *
+ * @param params Pointer to task-specific parameters used during execution.
+ *
+ * @note This function is intended to be used as a task in a real-time operating system (RTOS)
+ *       environment.
+ */
 void vDisplayTask(void *params)
 {
     i2c_init(I2C_PORT, 400 * 1000);
@@ -163,6 +198,7 @@ void vDisplayTask(void *params)
     }
 }
 
+// Tarefa para controlar o LED vermelho
 void vRedLedTask(void *params)
 {
     while (true)
@@ -179,6 +215,7 @@ void vRedLedTask(void *params)
     }
 }
 
+// Tarefa para controlar o buzzer
 void vBuzzerTask(void *params)
 {
     while (true)
@@ -201,6 +238,14 @@ void vBuzzerTask(void *params)
     }
 }
 
+/**
+ * @brief Inicializa o PWM para o buzzer.
+ *
+ * Configura o PWM no pino especificado para o controle do buzzer, possibilitando a ativação
+ * de sinais sonoros conforme a aplicação.
+ *
+ * @param pin Número do pino utilizado para a configuração do PWM.
+ */
 void pwm_init_buzzer(uint pin) {
     gpio_set_function(pin, GPIO_FUNC_PWM);
 
@@ -213,6 +258,16 @@ void pwm_init_buzzer(uint pin) {
     pwm_set_gpio_level(pin, 0);
 }
 
+/**
+ * @brief Reproduz uma nota musical.
+ *
+ * Esta função envia um sinal para o pino especificado com a frequência e duração definidas,
+ * permitindo assim a reprodução de uma nota.
+ *
+ * @param pin O pino de saída para emitir o sinal.
+ * @param frequency A frequência da nota em Hertz.
+ * @param duration A duração da nota em milissegundos.
+ */
 void play_note(uint pin, int frequency, int duration) {
     uint slice_num = pwm_gpio_to_slice_num(pin);
     uint32_t wrap = 4095;
