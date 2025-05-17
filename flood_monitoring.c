@@ -140,8 +140,11 @@ void vDisplayTask(void *params)
         {
             char water_level_str[12];
             char rain_volume_str[12];
-            snprintf(water_level_str, sizeof(water_level_str), "Water: %d", joystick_data.water_level);
-            snprintf(rain_volume_str, sizeof(rain_volume_str), "Rain: %d", joystick_data.rain_volume);
+            int water_level_percentage = (joystick_data.water_level * 100) / 4095;
+            int rain_volume_percentage = (joystick_data.rain_volume * 100) / 4095;
+            printf("Water Level: %d%%, Rain Volume: %d%%\n", water_level_percentage, rain_volume_percentage);
+            snprintf(water_level_str, sizeof(water_level_str), "Water: %d%%", water_level_percentage);
+            snprintf(rain_volume_str, sizeof(rain_volume_str), "Rain: %d%%", rain_volume_percentage);
             ssd1306_draw_string(&ssd, water_level_str, 2, 2);
             ssd1306_draw_string(&ssd, rain_volume_str, 2, 12);
 
