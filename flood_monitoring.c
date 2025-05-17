@@ -6,6 +6,8 @@
 #include "hardware/adc.h"
 #include "hardware/i2c.h"
 #include "lib/ssd1306.h"
+#include "hardware/pwm.h"
+#include "hardware/clocks.h"
 
 // Modo BOOTSEL com botão B
 #include "pico/bootrom.h"
@@ -24,6 +26,13 @@
 
 #define RED_LED_PIN 13
 
+#define BUZZER_A_PIN 21
+#define BUZZER_B_PIN 10
+#define BUZZER_FREQUENCY 200
+
+const float DIVIDER_PWM = 16.0;          
+const uint16_t PERIOD = 4096;
+
 typedef struct
 {
     uint16_t water_level; // Simula o nível da água no eixo X
@@ -38,6 +47,9 @@ void gpio_irq_handler(uint gpio, uint32_t events);
 void vJoystickTask(void *params);
 void vDisplayTask(void *params);
 void vRedLedTask(void *params);
+void vBuzzerTask(void *params);
+void pwm_init_buzzer(uint pin);
+void play_note(uint pin, int frequency, int duration);
 
 int main()
 {
@@ -49,6 +61,9 @@ int main()
     gpio_init(RED_LED_PIN);
     gpio_set_dir(RED_LED_PIN, GPIO_OUT);
     gpio_put(RED_LED_PIN, false); // Desliga o LED vermelho
+
+    pwm_init_buzzer(BUZZER_A_PIN);
+    pwm_init_buzzer(BUZZER_B_PIN);
 
     adc_init();
     adc_gpio_init(ADC_JOYSTICK_Y);
@@ -63,6 +78,7 @@ int main()
     xTaskCreate(vJoystickTask, "Joystick Task", 256, NULL, 1, NULL);
     xTaskCreate(vDisplayTask, "Display Task", 256, NULL, 1, NULL);
     xTaskCreate(vRedLedTask, "Red LED Task", 256, NULL, 1, NULL);
+    xTaskCreate(vBuzzerTask, "Buzzer Task", 256, NULL, 1, NULL);
 
     // Inicia o agendador
     vTaskStartScheduler();
@@ -158,4 +174,52 @@ void vRedLedTask(void *params)
         }
         vTaskDelay(pdMS_TO_TICKS(100)); // Atualiza a cada 100ms
     }
+}
+
+void vBuzzerTask(void *params)
+{
+    while (true)
+    {
+        if (alert_mode)
+        {
+            play_note(BUZZER_A_PIN, 1000, 500);
+            play_note(BUZZER_B_PIN, 2000, 500);
+            play_note(BUZZER_A_PIN, 1843, 500);
+            play_note(BUZZER_B_PIN, 2089, 500);
+            play_note(BUZZER_A_PIN, 4023, 500);
+            play_note(BUZZER_B_PIN, 2239, 500);
+        }
+        else
+        {
+            pwm_set_gpio_level(BUZZER_A_PIN, 0);
+            pwm_set_gpio_level(BUZZER_B_PIN, 0);
+        }
+        vTaskDelay(pdMS_TO_TICKS(1000)); // Espera 1 segundo antes de tocar novamente
+    }
+}
+
+void pwm_init_buzzer(uint pin) {
+    gpio_set_function(pin, GPIO_FUNC_PWM);
+
+    uint slice_num = pwm_gpio_to_slice_num(pin);
+
+    pwm_config config = pwm_get_default_config();
+    pwm_config_set_clkdiv(&config, clock_get_hz(clk_sys) / (BUZZER_FREQUENCY * 4096));
+    pwm_init(slice_num, &config, true);
+
+    pwm_set_gpio_level(pin, 0);
+}
+
+void play_note(uint pin, int frequency, int duration) {
+    uint slice_num = pwm_gpio_to_slice_num(pin);
+    uint32_t wrap = 4095;
+    float divider = (float) clock_get_hz(clk_sys) / (frequency * (wrap + 1));
+    pwm_set_clkdiv(slice_num, divider);
+    uint16_t level = (uint16_t)(((wrap + 1) * 50) / 100); // 50% duty cycle
+    pwm_set_gpio_level(pin, level);
+    pwm_set_enabled(slice_num, true);
+
+    sleep_ms(duration);
+
+    pwm_set_enabled(slice_num, false);
 }

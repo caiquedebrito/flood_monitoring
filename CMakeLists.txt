@@ -33,6 +33,8 @@ target_link_libraries(${PROJECT_NAME}
         hardware_pio
         FreeRTOS-Kernel
         FreeRTOS-Kernel-Heap4
+        hardware_pwm
+        hardware_clocks
         )
 
 target_include_directories(${PROJECT_NAME} PRIVATE
