@@ -46,8 +46,7 @@ typedef struct
 } joystick_data_t;
 
 QueueHandle_t xQueueJoystickData;
-
-bool alert_mode = false; // Variável global para o modo de alerta
+QueueHandle_t xQueueAlertModeData;
 
 struct pixel_t {
   uint8_t R, G, B; // Três valores de 8-bits compõem um pixel.
@@ -105,6 +104,7 @@ int main()
     sleep_ms(1000); // tempo para terminal abrir via USB
 
     xQueueJoystickData = xQueueCreate(10, sizeof(joystick_data_t)); // Cria a fila para os dados do joystick
+    xQueueAlertModeData = xQueueCreate(1, sizeof(bool)); // Cria a fila para o modo de alerta
 
     // Criação das tasks
     xTaskCreate(vJoystickTask, "Joystick Task", 256, NULL, 1, NULL);
@@ -140,6 +140,7 @@ void vJoystickTask(void *params)
     adc_gpio_init(ADC_JOYSTICK_Y);
 
     joystick_data_t joystick_data;
+    bool alert;
 
     while (true)
     {
@@ -151,12 +152,13 @@ void vJoystickTask(void *params)
 
         printf("Water Level: %d, Rain Volume: %d\n", joystick_data.water_level, joystick_data.rain_volume);
 
-        if ((joystick_data.water_level >= 4095 * 0.7) || (joystick_data.rain_volume >= 4095 * 0.8)) {
-            printf("Alert mode!\n");
-            alert_mode = true; // Ativa o modo de alerta
-        } else {
-            alert_mode = false; // Desativa o modo de alerta
-        }
+        bool alerta = 
+            (joystick_data.water_level >= 4095 * 0.7) ||
+            (joystick_data.rain_volume  >= 4095 * 0.8);
+
+        printf("Alert: %s\n", alerta ? "ON" : "OFF");
+
+        xQueueOverwrite(xQueueAlertModeData, &alerta);
 
         xQueueSend(xQueueJoystickData, &joystick_data, portMAX_DELAY); // Envia o valor do joystick para a fila
         vTaskDelay(pdMS_TO_TICKS(200));                        // 10 Hz de leitura
@@ -201,6 +203,7 @@ void vDisplayTask(void *params)
     ssd1306_send_data(&ssd);
 
     joystick_data_t joystick_data;
+    bool alert;
 
     while (true)
     {
@@ -216,13 +219,13 @@ void vDisplayTask(void *params)
             ssd1306_draw_string(&ssd, water_level_str, 2, 2);
             ssd1306_draw_string(&ssd, rain_volume_str, 2, 12);
 
-            if (alert_mode)
+            if (xQueuePeek(xQueueAlertModeData, &alert, 0) == pdTRUE && alert)
             {
-                ssd1306_draw_string(&ssd, "ALERT!", 2, 22);
+                ssd1306_draw_string(&ssd, "ALERTA!!!", 10, 22);
             }
             else
             {
-                ssd1306_draw_string(&ssd, "Safe  ", 2, 22);
+                ssd1306_draw_string(&ssd, "Safe     ", 10, 22);
             }
 
             ssd1306_send_data(&ssd);
@@ -234,16 +237,15 @@ void vDisplayTask(void *params)
 // Tarefa para controlar o LED vermelho
 void vRedLedTask(void *params)
 {
+    bool alert;
     while (true)
     {
-        if (alert_mode)
-        {
+        if (xQueuePeek(xQueueAlertModeData, &alert, 0) == pdTRUE && alert) {
             gpio_put(RED_LED_PIN, true); // Liga o LED vermelho
-        }
-        else
-        {
+        } else {
             gpio_put(RED_LED_PIN, false); // Desliga o LED vermelho
         }
+
         vTaskDelay(pdMS_TO_TICKS(100)); // Atualiza a cada 100ms
     }
 }
@@ -251,9 +253,10 @@ void vRedLedTask(void *params)
 // Tarefa para controlar o buzzer
 void vBuzzerTask(void *params)
 {
+    bool alert;
     while (true)
     {
-        if (alert_mode)
+        if (xQueuePeek(xQueueAlertModeData, &alert, 0) == pdTRUE && alert)
         {
             play_note(BUZZER_A_PIN, 1000, 500);
             play_note(BUZZER_B_PIN, 2000, 500);
@@ -276,9 +279,10 @@ void vMatrixTask(void *params)
 {
     npInit(WS2812_PIN); // Inicializa a matriz de LEDs no pino 16
 
+    bool alert;
     while (true)
     {
-        if (alert_mode) {
+        if (xQueuePeek(xQueueAlertModeData, &alert, 0) == pdTRUE && alert) {
             for (uint i = 0; i < LED_COUNT; ++i) {
                 if (matrix_alert_draw[i]) {
                     npSetLED(i, 255, 0, 0); // Define a cor vermelha para os LEDs
